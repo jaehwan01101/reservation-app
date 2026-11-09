@@ -1,0 +1,73 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.2'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'com.google.cloud.tools.jib' version '3.5.4'
+}
+
+group = 'com.eksproject'
+// CI에서 APP_VERSION=<git commit sha> 로 주입 → 이미지 태그 + 관리 포트 /actuator/info 의 build.version
+version = System.getenv('APP_VERSION') ?: '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+springBoot {
+    // META-INF/build-info.properties 생성 → 런타임에서 BuildProperties 로 버전 조회
+    buildInfo()
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+jib {
+    from {
+        image = 'eclipse-temurin:21-jre'
+        platforms {
+            platform {
+                architecture = 'amd64'
+                os = 'linux'
+            }
+            platform {
+                architecture = 'arm64'
+                os = 'linux'
+            }
+        }
+    }
+    to {
+        // 예: IMAGE_REPO=123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/reservation-app
+        image = System.getenv('IMAGE_REPO') ?: 'reservation-app'
+        tags = [version]
+    }
+    container {
+        ports = ['8080', '8081']
+        jvmFlags = ['-XX:MaxRAMPercentage=75', '-XX:+ExitOnOutOfMemoryError']
+        user = '1000:1000'
+        creationTime = 'USE_CURRENT_TIMESTAMP'
+    }
+}

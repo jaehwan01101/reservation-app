@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: reservation-app
+  datasource:
+    # K8s 에서는 External Secrets 로 만든 Secret → 환경변수로 주입
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/reservation}
+    username: ${DB_USERNAME:reservation}
+    password: ${DB_PASSWORD:reservation}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # 스키마 변경은 오직 Flyway 로만
+  flyway:
+    enabled: true
+  lifecycle:
+    # SIGTERM 수신 후 처리 중인 요청을 마무리할 최대 시간 (terminationGracePeriodSeconds 보다 짧게)
+    timeout-per-shutdown-phase: 20s
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  server:
+    # 메트릭/관리 엔드포인트는 별도 포트 → Ingress(ALB)로 외부 노출되지 않음
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        # 앱 포트(8080)에도 /livez, /readyz 를 노출 → K8s probe, ALB 헬스체크용
+        add-additional-paths: true
+      group:
+        readiness:
+          # DB 가 끊기면 트래픽만 빼고(readiness), 재시작은 하지 않는다(liveness 에는 db 미포함)
+          include: readinessState,db
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # Argo Rollouts AnalysisTemplate 에서 p95/p99 지연시간 쿼리용 히스토그램
+      percentiles-histogram:
+        http.server.requests: true
+
+app:
+  origin-verify:
+    # CloudFront 가 붙이는 시크릿 헤더 검증. K8s 에서는 ORIGIN_VERIFY_ENABLED=true,
+    # ORIGIN_VERIFY_SECRET 은 External Secrets 가 SSM 에서 가져와 만든 Secret 으로 주입
+    enabled: ${ORIGIN_VERIFY_ENABLED:false}
+    header-name: X-Origin-Verify
+    secret: ${ORIGIN_VERIFY_SECRET:}
+  fault:
+    # 장애 주입 (canary 자동 롤백 데모용). 0 이면 비활성
+    error-rate: ${APP_FAULT_ERROR_RATE:0}
+    latency-ms: ${APP_FAULT_LATENCY_MS:0}
