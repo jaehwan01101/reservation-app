@@ -10,3 +10,10 @@ bin/
 
 *.log
 .DS_Store
+
+# secrets
+.env
+.env.*
+*.tfvars
+*.pem
+*.key

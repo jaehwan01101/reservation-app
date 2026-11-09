@@ -1,0 +1,26 @@
+name: oidc-test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# id-token: write 가 없으면 GitHub 이 OIDC 토큰을 발급하지 않는다.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  whoami:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::485634019077:role/reservation-github-actions
+          aws-region: ap-northeast-2
+
+      - name: 누구로 인증됐나
+        run: aws sts get-caller-identity
+
+      - name: ECR 저장소 조회 (허용된 권한)
+        run: aws ecr describe-repositories --repository-names reservation-api --query "repositories[0].repositoryUri"
