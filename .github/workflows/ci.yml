@@ -1,0 +1,94 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 기본 권한은 읽기만. 더 필요한 job 에서만 올린다.
+permissions:
+  contents: read
+
+# PR 은 새 푸시가 오면 이전 실행을 취소한다.
+# main 은 취소하지 않는다 (배포로 이어지는 실행이 중간에 끊기면 안 된다).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: reservation-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - run: ./gradlew --no-daemon test
+
+  build-push:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # OIDC 토큰 발급은 이 job 에만 허용
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 이미지 태그 계산
+        id: meta
+        run: echo "tag=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::485634019077:role/reservation-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ECR 로그인
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      # Re-run 에서 같은 태그를 다시 푸시하면 immutable 저장소가 거부한다.
+      # 이미 있으면 푸시만 건너뛴다 (멱등). 없음(ImageNotFound) 외의 에러는 숨기지 않고 중단한다.
+      - name: 태그 존재 확인
+        id: exists
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if out=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" 2>&1); then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif grep -q ImageNotFoundException <<<"$out"; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.exists.outputs.found == 'false'
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.exists.outputs.found == 'false'
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.tag }}
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -71,3 +71,7 @@ jib {
         creationTime = 'USE_CURRENT_TIMESTAMP'
     }
 }
+
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
