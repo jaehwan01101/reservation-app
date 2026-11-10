@@ -25,10 +25,12 @@ FROM eclipse-temurin:21-jre
 WORKDIR /app
 
 # root 로 실행하지 않는다 (컨테이너 탈출 시 피해 축소)
-RUN groupadd --gid 1000 app && useradd --uid 1000 --gid app --no-create-home app
-USER 1000:1000
+# uid/gid 1000 은 베이스 이미지(Ubuntu)의 기본 사용자가 이미 쓰고 있어 충돌한다.
+# 호스트 일반 사용자와 번호가 겹치지 않도록 10000 이상을 쓴다.
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app
+USER 10001:10001
 
-COPY --from=build --chown=1000:1000 /workspace/build/libs/app.jar app.jar
+COPY --from=build --chown=10001:10001 /workspace/build/libs/app.jar app.jar
 
 EXPOSE 8080 8081
 
