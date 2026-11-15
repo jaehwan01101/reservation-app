@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+    # 배포 매니페스트만 바뀐 푸시(CI 자신의 태그 갱신 커밋 포함)는 이미지를 다시 빌드할 이유가 없다
+    paths-ignore:
+      - "deploy/**"
 
 # 기본 권한은 읽기만. 더 필요한 job 에서만 올린다.
 permissions:
@@ -92,3 +95,35 @@ jobs:
           tags: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # 새 이미지 태그를 deploy/kustomization.yaml 에 커밋한다.
+  # 이 커밋이 CI 와 CD 의 경계다: Argo CD 가 이 변경을 감지해 배포를 시작한다.
+  # AWS 권한이 필요 없어서 build-push 와 분리했고, 저장소 쓰기 권한은 이 job 에만 준다.
+  update-manifest:
+    needs: build-push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # persist-credentials 를 끄지 않는다: 아래 git push 에 필요하다. 이 job 에는 다른 서드파티 Action 이 없다.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 이미지 태그 계산 (build-push 와 같은 규칙)
+        id: meta
+        run: echo "tag=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: 매니페스트에 새 태그 반영
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          sed -i "s|^\( *newTag: *\).*|\1${TAG}|" deploy/kustomization.yaml
+          if git diff --quiet; then
+            echo "변경 없음"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "deploy: reservation-api ${TAG}"
+          git pull --rebase origin main
+          git push origin HEAD:main

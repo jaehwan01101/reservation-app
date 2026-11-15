@@ -1,0 +1,34 @@
+# 카나리 배포에는 Service 가 둘 필요하다.
+#   stable : 현재 안정 버전의 파드로만 간다
+#   canary : 새 버전(카나리)의 파드로만 간다
+# Rollouts 가 두 Service 의 셀렉터에 rollouts-pod-template-hash 를 붙여 각각 다른 ReplicaSet 을 가리키게 한다.
+# ALB 가 두 Service 의 타깃 그룹에 가중치(20%, 50% ...)를 나눠서 트래픽을 보낸다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation-stable
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  type: ClusterIP
+  selector:
+    app: reservation
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation-canary
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  type: ClusterIP
+  selector:
+    app: reservation
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

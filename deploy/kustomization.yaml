@@ -1,0 +1,19 @@
+# Argo CD 가 이 폴더를 Kustomize 로 렌더링해서 reservation 네임스페이스에 적용한다.
+# 이미지 태그는 CI(.github/workflows/ci.yml 의 update-manifest job)가 newTag 줄을 새 값으로 바꿔 커밋한다.
+# 그 커밋이 CI 와 CD 의 경계다: Argo CD 가 이 변경을 감지해 배포를 시작한다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: reservation
+
+resources:
+  - externalsecret-db.yaml
+  - services.yaml
+  - ingress.yaml
+  - rollout.yaml
+
+images:
+  # rollout.yaml 의 image: reservation-api 를 아래 이름과 태그로 치환한다.
+  - name: reservation-api
+    newName: 485634019077.dkr.ecr.ap-northeast-2.amazonaws.com/reservation-api
+    newTag: 2680429-2

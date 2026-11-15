@@ -1,0 +1,37 @@
+# ALB 의 "주문서". LB 컨트롤러가 이걸 읽고 AWS 에 ALB 를 만든다 (권한은 Terraform 50-platform 의 Pod Identity).
+#
+# 백엔드를 서비스 포트 이름 use-annotation 으로 두는 것은 Argo Rollouts ALB 연동의 규칙이다.
+# 카나리 진행 중 Rollouts 가 alb.ingress.kubernetes.io/actions.reservation-stable 어노테이션을
+# 이 Ingress 에 주입해서 stable / canary 타깃 그룹의 가중치를 조절한다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reservation
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    # internal: VPC 안에서만 접근된다. 인터넷에 노출하지 않고(내 IP 를 공개 저장소에 적을 일도 없다) 점프 호스트에서 검증한다.
+    # (CloudFront → ALB 구성은 60-edge 에 있고, 지금은 적용하지 않는다)
+    alb.ingress.kubernetes.io/scheme: internal
+    # 파드 IP 로 직접 보낸다. 카나리 가중치 라우팅은 ip 모드가 필요하다 (VPC CNI 파드는 VPC IP 를 가진다).
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    # 앱 포트(8080)의 /readyz. DB 가 끊기면 readiness 가 실패해 트래픽만 빠진다 (재시작은 하지 않는다).
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "10"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    # 파드 종료 시 ALB 가 등록 해제 후에도 요청을 보내는 시간. 롤링/카나리 중 502 를 줄이는 설정이다.
+    # preStop sleep(10s) + 이 값이 종료 유예 시간(terminationGracePeriodSeconds) 안에 들어가야 한다.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: reservation-stable
+                port:
+                  name: use-annotation

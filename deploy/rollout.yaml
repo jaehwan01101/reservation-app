@@ -1,0 +1,92 @@
+# Deployment 대신 Rollout 을 쓴다. 새 버전을 카나리로 점진 배포한다.
+# 지금은 시간 기반 pause 만 있고, 메트릭 기반 자동 판정(AnalysisTemplate)은 관측성(Prometheus) 구축 후에 붙인다.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: reservation
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: reservation
+  strategy:
+    canary:
+      stableService: reservation-stable
+      canaryService: reservation-canary
+      trafficRouting:
+        alb:
+          ingress: reservation
+          servicePort: 80
+      steps:
+        - setWeight: 20
+        - pause: { duration: 60s }
+        - setWeight: 50
+        - pause: { duration: 60s }
+        # 마지막 단계 뒤에는 자동으로 100% 가 된다
+  template:
+    metadata:
+      labels:
+        app: reservation
+    spec:
+      # 종료 순서: SIGTERM 전에 preStop(10s) → 앱의 graceful shutdown(최대 20s). 합이 유예 시간 안에 들어와야 한다.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # Dockerfile 의 app 사용자(uid/gid 10001)와 같아야 한다
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: reservation-api # kustomization.yaml 의 images 가 ECR 주소와 태그로 치환한다
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: db-credentials # ExternalSecret 이 만든 Secret (DB_URL, DB_USERNAME, DB_PASSWORD)
+          # 기동이 느린 JVM 을 liveness 가 죽이지 않도록 startupProbe 가 통과한 뒤에야 liveness 가 시작된다.
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /livez # DB 는 포함하지 않는다: DB 장애로 파드를 재시작해도 낫지 않는다
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz # DB 포함: DB 가 끊기면 트래픽만 뺀다
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10 # ALB 가 이 파드를 타깃에서 빼는 동안 요청을 계속 받는다
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 512Mi # JVM 은 MaxRAMPercentage=75 로 이 한도의 75% 를 힙으로 쓴다. CPU limit 은 두지 않는다(스로틀링 방지)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp # 읽기 전용 루트 파일시스템이라 JVM/Tomcat 이 쓸 곳이 필요하다
+      volumes:
+        - name: tmp
+          emptyDir: {}
