@@ -11,6 +11,7 @@ resources:
   - services.yaml
   - ingress.yaml
   - rollout.yaml
+  - podmonitor.yaml
 
 images:
   # rollout.yaml 의 image: reservation-api 를 아래 이름과 태그로 치환한다.
