@@ -195,3 +195,5 @@ src/main/resources/
 ├── application.yml
 └── application-local.yml   H2 프로필
 ```
+
+<!-- canary test -->
