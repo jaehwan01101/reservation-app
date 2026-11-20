@@ -30,6 +30,8 @@ spec:
     metadata:
       labels:
         app: reservation
+      annotations:
+        deploy-test: "1"
     spec:
       # 종료 순서: SIGTERM 전에 preStop(10s) → 앱의 graceful shutdown(최대 20s). 합이 유예 시간 안에 들어와야 한다.
       terminationGracePeriodSeconds: 45
