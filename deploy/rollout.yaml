@@ -14,12 +14,14 @@ spec:
       app: reservation
   strategy:
     canary:
-      stableService: reservation-stable
-      canaryService: reservation-canary
+      pingPong:
+        pingService: reservation-stable
+        pongService: reservation-canary
       trafficRouting:
         alb:
           ingress: reservation
           servicePort: 80
+          rootService: reservation-root
       steps:
         - setWeight: 20
         - pause: { duration: 60s }
