@@ -32,6 +32,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: reservation-stable
+                name: reservation-root
                 port:
                   name: use-annotation

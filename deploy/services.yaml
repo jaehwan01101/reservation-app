@@ -32,3 +32,18 @@ spec:
     - name: http
       port: 80
       targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation-root
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  type: ClusterIP
+  selector:
+    app: reservation
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
