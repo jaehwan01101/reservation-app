@@ -51,9 +51,14 @@ spec:
               containerPort: 8080
             - name: management
               containerPort: 8081
+          env:
+            - name: ORIGIN_VERIFY_ENABLED
+              value: "true" # CloudFront 를 거치지 않은 /api 요청을 403 으로 거절한다
           envFrom:
             - secretRef:
                 name: db-credentials # ExternalSecret 이 만든 Secret (DB_URL, DB_USERNAME, DB_PASSWORD)
+            - secretRef:
+                name: origin-verify # CloudFront 비밀 헤더 값 (ORIGIN_VERIFY_SECRET)
           # 기동이 느린 JVM 을 liveness 가 죽이지 않도록 startupProbe 가 통과한 뒤에야 liveness 가 시작된다.
           startupProbe:
             httpGet:

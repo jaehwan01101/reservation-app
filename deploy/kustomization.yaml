@@ -8,6 +8,7 @@ namespace: reservation
 
 resources:
   - externalsecret-db.yaml
+  - externalsecret-origin-verify.yaml
   - services.yaml
   - ingress.yaml
   - rollout.yaml
