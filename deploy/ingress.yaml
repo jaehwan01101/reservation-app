@@ -11,11 +11,12 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
     # internal: VPC 안에서만 접근된다. 인터넷에 노출하지 않고(내 IP 를 공개 저장소에 적을 일도 없다) 점프 호스트에서 검증한다.
     # (CloudFront → ALB 구성은 60-edge 에 있고, 지금은 적용하지 않는다)
-    alb.ingress.kubernetes.io/scheme: internal
-    # 파드 IP 로 직접 보낸다. 카나리 가중치 라우팅은 ip 모드가 필요하다 (VPC CNI 파드는 VPC IP 를 가진다).
+        alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
-    # 앱 포트(8080)의 /readyz. DB 가 끊기면 readiness 가 실패해 트래픽만 빠진다 (재시작은 하지 않는다).
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-northeast-2:485634019077:certificate/8285d97b-de09-4bba-90ea-c52a0ee40040
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/security-group-prefix-lists: pl-22a6434b
     alb.ingress.kubernetes.io/healthcheck-path: /readyz
     alb.ingress.kubernetes.io/healthcheck-interval-seconds: "10"
     alb.ingress.kubernetes.io/healthy-threshold-count: "2"
