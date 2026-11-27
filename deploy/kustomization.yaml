@@ -18,4 +18,4 @@ images:
   # rollout.yaml 의 image: reservation-api 를 아래 이름과 태그로 치환한다.
   - name: reservation-api
     newName: 485634019077.dkr.ecr.ap-northeast-2.amazonaws.com/reservation-api
-    newTag: 9f97ad5-4
+    newTag: 57e71d5-5
