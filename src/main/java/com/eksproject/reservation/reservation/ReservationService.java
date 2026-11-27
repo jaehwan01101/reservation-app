@@ -6,6 +6,8 @@ import com.eksproject.reservation.seat.Seat;
 import com.eksproject.reservation.seat.SeatRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,9 @@ import java.security.SecureRandom;
 
 @Service
 public class ReservationService {
+
+    // 예약 결과를 별도 필드(addKeyValue)로 남긴다. 고객 이름은 개인정보라 남기지 않는다.
+    private static final Logger log = LoggerFactory.getLogger(ReservationService.class);
 
     // 헷갈리는 문자(0/O, 1/I) 제외
     private static final char[] CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
@@ -40,11 +45,18 @@ public class ReservationService {
                 .orElseThrow(() -> new NotFoundException("좌석", seatId));
         if (!seat.isAvailable()) {
             conflictCounter.increment();
+            log.atInfo().addKeyValue("action", "reservation.conflict")
+                    .addKeyValue("seatId", seatId)
+                    .log("이미 예약된 좌석에 예약 요청");
             throw new SeatUnavailableException(seat.getSeatNo());
         }
         seat.reserve();
         Reservation reservation = reservations.save(Reservation.create(newCode(), seat, customerName));
         createdCounter.increment();
+        log.atInfo().addKeyValue("action", "reservation.created")
+                .addKeyValue("reservationCode", reservation.getCode())
+                .addKeyValue("seatId", seatId)
+                .log("예약 생성");
         return ReservationResponse.from(reservation);
     }
 
@@ -58,6 +70,9 @@ public class ReservationService {
         Reservation reservation = find(code);
         reservation.cancel();
         cancelledCounter.increment();
+        log.atInfo().addKeyValue("action", "reservation.cancelled")
+                .addKeyValue("reservationCode", reservation.getCode())
+                .log("예약 취소");
         return ReservationResponse.from(reservation);
     }
 

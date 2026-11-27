@@ -54,6 +54,8 @@ spec:
           env:
             - name: ORIGIN_VERIFY_ENABLED
               value: "true" # CloudFront 를 거치지 않은 /api 요청을 403 으로 거절한다
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs # 로그를 한 줄에 JSON 하나로 출력한다 (Loki 에서 필드로 검색)
           envFrom:
             - secretRef:
                 name: db-credentials # ExternalSecret 이 만든 Secret (DB_URL, DB_USERNAME, DB_PASSWORD)
