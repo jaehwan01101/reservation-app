@@ -15,6 +15,8 @@ spring:
       ddl-auto: validate   # 스키마 변경은 오직 Flyway 로만
   flyway:
     enabled: true
+    # 공통 마이그레이션 + DB 종류별 마이그레이션. {vendor} 는 postgresql(RDS) 또는 h2(로컬)로 바뀐다.
+    locations: classpath:db/migration,classpath:db/vendor/{vendor}
   lifecycle:
     # SIGTERM 수신 후 처리 중인 요청을 마무리할 최대 시간 (terminationGracePeriodSeconds 보다 짧게)
     timeout-per-shutdown-phase: 20s

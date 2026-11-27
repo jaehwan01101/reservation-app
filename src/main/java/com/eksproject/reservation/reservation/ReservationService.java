@@ -8,6 +8,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,14 +30,16 @@ public class ReservationService {
     private final Counter createdCounter;
     private final Counter cancelledCounter;
     private final Counter conflictCounter;
+    private final Counter duplicateBlockedCounter;
 
     public ReservationService(SeatRepository seats, ReservationRepository reservations, MeterRegistry registry) {
         this.seats = seats;
         this.reservations = reservations;
-        // Prometheus: reservation_events_total{result="created|cancelled|conflict"}
+        // Prometheus: reservation_events_total{result="created|cancelled|conflict|duplicate_blocked"}
         this.createdCounter = registry.counter("reservation.events", "result", "created");
         this.cancelledCounter = registry.counter("reservation.events", "result", "cancelled");
         this.conflictCounter = registry.counter("reservation.events", "result", "conflict");
+        this.duplicateBlockedCounter = registry.counter("reservation.events", "result", "duplicate_blocked");
     }
 
     @Transactional
@@ -51,7 +54,18 @@ public class ReservationService {
             throw new SeatUnavailableException(seat.getSeatNo());
         }
         seat.reserve();
-        Reservation reservation = reservations.save(Reservation.create(newCode(), seat, customerName));
+        Reservation reservation;
+        try {
+            // flush 로 INSERT 를 즉시 실행해서, DB 고유 제약(uk_reservation_active_seat) 위반을 여기서 잡는다.
+            reservation = reservations.saveAndFlush(Reservation.create(newCode(), seat, customerName));
+        } catch (DataIntegrityViolationException e) {
+            // 잠금을 통과했는데 DB 가 막았다 = 잠금 로직에 구멍이 있다는 신호. 정확성 SLO 알람의 근거 지표다.
+            duplicateBlockedCounter.increment();
+            log.atWarn().addKeyValue("action", "reservation.duplicate_blocked")
+                    .addKeyValue("seatId", seatId)
+                    .log("DB 고유 제약이 중복 예약을 막음");
+            throw new SeatUnavailableException(seat.getSeatNo());
+        }
         createdCounter.increment();
         log.atInfo().addKeyValue("action", "reservation.created")
                 .addKeyValue("reservationCode", reservation.getCode())
